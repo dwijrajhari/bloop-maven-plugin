@@ -543,4 +543,36 @@ class MavenConfigGenerationTest extends BaseConfigSuite {
       assertEquals("3.4.2", configFile.project.`scala`.get.version)
     }
   }
+
+  @Test
+  def runtimeDependency() = {
+    check("runtime_dependency/pom.xml") { (configFile, projectName, subprojects) =>
+      assert(subprojects.isEmpty)
+      assert(configFile.project.`scala`.isDefined)
+
+      // logback-classic is runtime-scoped: it must NOT appear on the compile classpath
+      assert(
+        !hasCompileClasspathEntryName(configFile, "logback-classic"),
+        "logback-classic should NOT be on the compile classpath"
+      )
+
+      // but it MUST appear in the JVM platform runtime classpath
+      assert(
+        hasRuntimeClasspathEntryName(configFile, "logback-classic"),
+        "logback-classic should be on the JVM platform runtime classpath"
+      )
+
+      // transitive runtime dep (logback-core) should also be on runtime classpath
+      assert(
+        hasRuntimeClasspathEntryName(configFile, "logback-core"),
+        "logback-core (transitive of logback-classic) should be on the JVM platform runtime classpath"
+      )
+
+      // compile deps must still be present on the runtime classpath
+      assert(
+        hasRuntimeClasspathEntryName(configFile, "scala-library"),
+        "scala-library should still be on the JVM platform runtime classpath"
+      )
+    }
+  }
 }

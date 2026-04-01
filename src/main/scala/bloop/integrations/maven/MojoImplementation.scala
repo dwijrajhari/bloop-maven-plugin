@@ -214,6 +214,7 @@ object MojoImplementation {
         classesDir0: File,
         // needs to be lazy, since we resolve artifacts later on
         classpath0: () => java.util.List[_],
+        runtimeClasspath0: Option[() => java.util.List[_]],
         resources0: java.util.List[_],
         launcher: Option[AppLauncher],
         configuration: String
@@ -289,7 +290,7 @@ object MojoImplementation {
 
       val resolution = Some(Config.Resolution(modules))
 
-      val classpath = {
+      val (classpath, runtimeClasspath) = {
         val projectDependencies = dependencies.flatMap { d =>
           val build = d.getBuild()
           if (configuration == "compile") build.getOutputDirectory() :: Nil
@@ -302,7 +303,16 @@ object MojoImplementation {
 
         val fullClasspath =
           if (hasScalaLibrary) cp else cp ++ libraryAndDependencies.map(_.getFile().toPath())
-        (projectDependencies.map(u => abs(new File(u))) ++ fullClasspath ++ extraClasspath).toList
+        val compileCp =
+          (projectDependencies.map(u => abs(new File(u))) ++ fullClasspath ++ extraClasspath).toList
+
+        val runtimeCp = runtimeClasspath0.flatMap { getRuntimeCp =>
+          val runtimeElements =
+            getRuntimeCp().asScala.toList.asInstanceOf[List[String]].map(u => abs(new File(u)))
+          Some((compileCp ++ runtimeElements).distinct)
+        }
+
+        (compileCp, runtimeCp)
       }
 
       val tags = if (configuration == "test") List(Tag.Test) else List(Tag.Library)
@@ -324,7 +334,7 @@ object MojoImplementation {
         val javaHome = Some(abs(mojo.getJavaHome().getParentFile.getParentFile))
         val jvmArgs = launcher.map(_.getJvmArgs.toList).getOrElse(List.empty)
         val mainClass = launcher.map(_.getMainClass).filter(_.nonEmpty)
-        val platform = Some(Config.Platform.Jvm(Config.JvmConfig(javaHome, jvmArgs), mainClass, None, None, None))
+        val platform = Some(Config.Platform.Jvm(Config.JvmConfig(javaHome, jvmArgs), mainClass, None, runtimeClasspath, None))
         val resources = Some(resources0.asScala.toList.flatMap {
           case a: Resource =>
             val dir = Paths.get(a.getDirectory())
@@ -366,6 +376,7 @@ object MojoImplementation {
       mojo.getCompileSourceDirectories.asScala.toSeq,
       mojo.getCompileOutputDir,
       project.getCompileClasspathElements,
+      Some(() => project.getRuntimeClasspathElements()),
       project.getResources,
       launcher,
       "compile"
@@ -375,6 +386,7 @@ object MojoImplementation {
       mojo.getTestSourceDirectories.asScala.toSeq,
       mojo.getTestOutputDir,
       project.getTestClasspathElements,
+      None,
       project.getTestResources,
       launcher,
       "test"
