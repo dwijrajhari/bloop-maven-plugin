@@ -545,6 +545,39 @@ class MavenConfigGenerationTest extends BaseConfigSuite {
   }
 
   @Test
+  def exclusion() = {
+    check(
+      "exclusion/pom.xml",
+      submodules = List(
+        "exclusion/shims/pom.xml",
+        "exclusion/api/pom.xml",
+        "exclusion/consumer/pom.xml"
+      )
+    ) {
+      case (_, _, List(_, apiConfig, consumerConfig)) =>
+        // api depends on shims — shims output dir must be on api's classpath
+        assert(
+          hasCompileClasspathEntryName(apiConfig, "shims"),
+          "api should have shims on its compile classpath"
+        )
+
+        // consumer explicitly excludes shims — its output dir must NOT appear
+        assert(
+          !hasCompileClasspathEntryName(consumerConfig, "shims"),
+          "consumer should not have shims on its compile classpath"
+        )
+
+        // api itself must still be on consumer's classpath
+        assert(
+          hasCompileClasspathEntryName(consumerConfig, "api"),
+          "consumer should still have api on its compile classpath"
+        )
+      case _ =>
+        assert(false, "exclusion should have exactly three submodules")
+    }
+  }
+
+  @Test
   def runtimeDependency() = {
     check("runtime_dependency/pom.xml") { (configFile, projectName, subprojects) =>
       assert(subprojects.isEmpty)
