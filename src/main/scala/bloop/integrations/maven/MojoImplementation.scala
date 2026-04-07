@@ -291,10 +291,18 @@ object MojoImplementation {
       val resolution = Some(Config.Resolution(modules))
 
       val (classpath, runtimeClasspath) = {
+        // keys of artifacts that survived Maven's exclusion resolution for this module.
+        val resolvedArtifactKeys: Set[String] = project.getArtifacts.asScala
+          .map(a => ArtifactUtils.versionlessKey(a))
+          .toSet
+
         val projectDependencies = dependencies.flatMap { d =>
-          val build = d.getBuild()
-          if (configuration == "compile") build.getOutputDirectory() :: Nil
-          else build.getTestOutputDirectory() :: build.getOutputDirectory() :: Nil
+          if (!resolvedArtifactKeys.contains(ArtifactUtils.versionlessKey(d.getArtifact))) Nil
+          else {
+            val build = d.getBuild()
+            if (configuration == "compile") build.getOutputDirectory() :: Nil
+            else build.getTestOutputDirectory() :: build.getOutputDirectory() :: Nil
+          }
         }
 
         val cp = classpath0().asScala.toList.asInstanceOf[List[String]].map(u => abs(new File(u)))
